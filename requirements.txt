@@ -1,0 +1,71 @@
+ABOUT THE PROJECT AND FINAL PRESENTATION:
+
+Read this carefully  - your GRADE will be based on meeting the requirements noted here:
+
+ NOTE: Your Live Presentation will also be part of your grade. Teams members will get the same grade and must both present. 
+
+Presentations: 
+
+(1) Introduce - what is your area (briefly!) and what are your goals.
+
+(2) Discuss 5 key analyses, their results and their visualizations. 
+
+(3) Offer clear and anyone-can-understand conclusions. 
+
+ - Include nothing about the data
+
+(4) Be precise and succinct. 
+
+1) Your Project should be written professionally. You may use RMarkdown, ppt, pdf, Word, or a more advanced option.
+
+2) Whether you use RMarkdown or not, you must have all the written areas.
+
+ 
+
+Required Headings:
+
+Introduction  - (3-4 paragraphs all about the area of interest. Do NOT discuss the data in the intro). The intro is non-technical and offers background, objectives, history, value, goals, etc. It must be readable by a person who is 10 or 11.
+
+ 
+
+Analysis
+
+Subsection 1: The Data
+
+This is where you talk all about the data, the variables, the cleaning, measures of cleanliness, etc.
+
+Even if your data is clean, you must write code to clean it (pretend you cannot see that it is clean).     Minimally: NAs, changing things to factors as needed, outliers, discretization, incorrect values, such as .23 for age, etc.
+
+ 
+
+Subsection 2: EDA: statistical and visual
+
+ 
+
+Subsections 3 - n:
+
+Here you run all methods learned in this class. One subsection for each. Include tuning and/or different options as applicable - such as different kernels and C for SVM, different k for kmeans, etc.
+
+            Explain as you go. Pretend you are writing a tutorial paper.
+
+ 
+
+ 
+
+Results
+
+Subsections 1:nYou will have and will discuss results, issues, and limitations for all the analysis. You will note which ones worked well, and why, which ones did not, and why, etc.
+
+ 
+
+Conclusions:
+
+3-4 paragraphs - NON-TECHNICAL. What was the outcome - what did you find, discover, predict, classify? WHy does it matter to humans?
+
+ 
+
+Visualizations:
+
+Create AT LEAST ONE vis for each method. So one for EDA (exploring the data) - ideally you would have many in this area. One for k means (more is better), one for hierarchical clustering, one for SVM, etc. etc.
+
+You will have at least 10 visualizations - likely many more.
