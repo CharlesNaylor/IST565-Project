@@ -14,3 +14,8 @@ ggthemes
 bindrcpp
 cluster
 ggdendro
+randomForest
+e1071
+abind
+StanHeaders
+rstan

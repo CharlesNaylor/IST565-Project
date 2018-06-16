@@ -27,11 +27,11 @@ In FX, that interest rate differential, the "carry", is relatively stable but su
 
 Speculators in currencies try to pocket the carry while avoiding the risk of major movements in currency prices. The strategy has been likened to picking up nickels in front of a steamroller. Thus, in spite of the difficulties inherent in forecasting currency movements, a *successful* speculator must have some idea of what those movements will look like in the future.
 
-There are many possible methods available to create these forecasts. Professionally, I have seen econometric panel data (i.e. the same set of economic measurements repeated for multiple countries) plugged into a Kalman Filter in order to capture the evolving relationship between indicators and their currencies, while also recognizing that one currency's movements will affect all other currencies, as well. The Kalman filter has the advantage of having a closed-form solution and being well-adapted to testing in systems in which one expects to add new data regularly. In its most basic form, the disadvantage is that a Kalman filter requires careful tuning of the relationship between its output variables, and of the covariance of evolution of its factor weightings.
+There are many possible methods available to create these forecasts. Professionally, econometric panel data (i.e. the same set of economic measurements repeated for multiple countries) has been plugged into a Kalman Filter in order to capture the evolving relationship between indicators and their currencies, while also recognizing that one currency's movements will affect all other currencies. The Kalman filter has the advantage of having a closed-form solution and being well-adapted to testing in systems in which one expects to add new data regularly. In its most basic form, the disadvantage is that a Kalman filter requires careful tuning of the relationship between its output variables, and of the covariance of evolution of its factor weightings.
 
-Some months ago, I wrote a case study of generative Bayesian forecasting techniques`<insert GP reference>` that applied a Gaussian Process Regression to panel data for 11 of the most traded world currencies. The result was a well-specified and validated forecasting model whose error term was far larger than its signal. This jibed with the results I had seen professionally using a Kalman Filter, but thanks to posterior predictive checking the flaws are glaringly obvious. I would like to see how this forecast can be improved.
+Prior work has been done on the same data set as a case study of generative Bayesian forecasting techniques`<insert GP reference>`. The study applied a Gaussian Process Regression to panel data for 11 of the most traded world currencies. The result was a well-specified and validated forecasting model whose error term was far larger than its signal. This jibed with the results seen professionally using a Kalman Filter, but thanks to posterior predictive checking the flaws are glaringly obvious. Can this, or a similar forecast, be improved?
 
-I am particularly interested by the work being done at the University of Maryland into the application of neural network reservoirs to chaotic systems.`<insert Pathak reference>` I plan to apply these techniques to the residuals of the Gaussian Process regression, or in combination with some other regression on the panel data.
+Work is being done at the University of Maryland into the application of neural network reservoirs to chaotic systems.`<insert Pathak reference>` After surveying some simpler machine learning techniques, this project will apply these techniques to the residuals of the Gaussian Process regression, or in combination with some other regression on the panel data.
 
 ## Goals
 
@@ -43,13 +43,9 @@ I am particularly interested by the work being done at the University of Marylan
 Data consists of the weekly currency returns, plus a raft of weekly economic data.
 
 ```{r load_data, include=FALSE}
-suppressPackageStartupMessages(library(tidyverse))
-suppressPackageStartupMessages(library(scales))
-suppressPackageStartupMessages(library(lubridate))
-suppressPackageStartupMessages(library(ggthemes))
-suppressPackageStartupMessages(library(randomForest))
+packages <- c("tidyverse", "scales", "lubridate", "ggthemes", "randomForest", "cluster", "e1071", "abind")
+lapply(packages, function(X){suppressPackageStartupMessages(library(X, character.only=T))})
 
-library(cluster)
 load('data/scaled_data.rData')
 
 #Put 3d exog matrix into tidy format
@@ -314,8 +310,7 @@ Although Support Vector Machines (SVMs) are traditionally used for classificatio
 The exogenous variables have already been standardized, so a SVM should fit reasonably well out of the box. As we are forecasting at this point, the endogenous variables (i.e. the asset returns) will need to be lagged by a week. Finally, there is the question of whether all currencies should be expected to behave similarly given the same economic data. For now, it will be assumed this is so.
 
 Try an initial run without tuning:
-```{r svm_base, cacahe=TRUE}
-library(e1071)
+```{r svm_base, cache=TRUE}
 forecast_data %>%
   filter(is_training) %>%
   select(-constant, -Date,-Asset, -is_training) %>% #a constant carries no information for a support vector machine, I believe
@@ -443,7 +438,9 @@ list(svm_base=svm_base, svm_simple=svm_occam, svm_poly=svm_poly,
                   select(endo)) %>%
       summarize(MSE=10000*mean((endo-hat)^2)) %>% 
       select(MSE) 
-  }, .id="Model") %>%
+  }, .id="Model") ->
+  MSE
+  MSE %>%
   arrange(desc(MSE)) %>%
   knitr::kable(digits=3)
 ```
@@ -479,6 +476,7 @@ proximity %>%
   ggplot(aes(x=x_Date,y=Date,fill=value)) +
   geom_tile() + #I find myself using geom_tile a lot on this project
   scale_fill_gradient(low="white", high="red") +
+  coord_flip()+
   ggtitle("Similarity between Dates")
 ```
 
@@ -493,28 +491,28 @@ The model will be fit using Stan, the current state of the art for Bayesian gene
 As a final input, the estimated covariance of the various currency returns will be specified directly, for parsimony's sake. A production system would typically estimate the joint volatility using a GARCH model.
 
 ```{r}
-library(rstan)
+suppressPackageStartupMessages(library(rstan))
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores()) # MCMC techniques involve running multiple chains and ensuring they mixed well, an easily paralellized problem.
 
-weighted_mvn <- "
+weighted_mvn_code <- "
 data {
   int<lower=0> A; // # of Assets
   int<lower=0> T; // # of weeks (recall that the linear regression weighting permits testing on t+1 forecasts in a single step)
   int<lower=0> J; // # of exogenous variables
   int<lower=0> T_1; // #start of training period. We need some padding so the regression has enough periods to be useful 
   
-  matrix[T,A] Y; // asset returns
-  matrix[T,J] X[A]; //exogenous panel data
+  row_vector[A] Y[T]; // asset returns
+  matrix[J,A] X[T]; //exogenous panel data
   cov_matrix[A] y_cov[T]; // Covariance of asset returns
   matrix[T,T] proxmat; //proximity matrix for weighting log-likelihood
 }
 transformed data {
   int<lower=0> TL; //#training period length
-  matrix[A,A] L_y_cov[TL];
-  TL = T_1 - T;
-  for(t in T_1:T) {
-    L_y_cov[t-T_1+1] = cholesky_decompose(y_cov[t]); // Cholesky decompositions are more stably positive-definite than straight covariance matrices
+  matrix[A,A] L_y_cov[T];
+  TL = T - T_1;
+  for(t in 1:T) {
+    L_y_cov[t] = cholesky_decompose(y_cov[t]); // Cholesky decompositions are more stably positive-definite than straight covariance matrices
   }
 }
 parameters {
@@ -522,14 +520,111 @@ parameters {
 }
 model {
   to_vector(beta) ~ normal(0, 1);
-  for(t in 1:T) { //for each week in the data
+  for(t in T_1:(T-1)) { //for each week in the data
       for(i in 1:t) { //for each period prior to that week
-        target += multinormal_cholesky_lpdf(to_row_vector(Y[t])|XB[t], L_y_cov[t]);
+        target += proxmat[t,i] * multi_normal_cholesky_lpdf(Y[i]|beta[t-T_1+1]*X[i], L_y_cov[i]);
       }
     }
-  }
 }
 generated quantities {
-}"
+  //Generate forecasts so that we will have plenty of data to feed the neural net.
+  vector[A] y_hat[TL];
+  vector[TL] log_lik;
+  log_lik[1] = multi_normal_cholesky_lpdf(Y[T_1]|beta[T_1]*X[T_1], L_y_cov[T_1]);
+  for(t in (T_1+1):(T-1)) {
+    log_lik[t-T_1+1] = multi_normal_cholesky_lpdf(Y[t]|beta[t-T_1+1]*X[t-T_1+1], L_y_cov[t-T_1+1]);
+    y_hat[t-T_1+1] = multi_normal_cholesky_rng(to_vector(beta[t-T_1]*X[t-T_1+1]), L_y_cov[t-T_1+1]);
+  } 
+}
+"
+
+weighted_mvn_model <- stan_model(model_name="weighted_mvn", model_code=weighted_mvn_code)
 ```
 
+Prepare the data in the format Stan expects. This was defined in the `data` section above.
+
+#### $\Sigma_y$
+
+Create exponentially weighted variance-covariance matrix. GARCH would be better, but from prior experience makes little difference to weekly currency returns.
+```{r y_cov}
+FIRST_DATA_SET <- 52 #Start the forecast after we have at least 52 weeks of data
+N1 <- nrow(endo) - 1 - FIRST_DATA_SET
+N2 <- 0 # # of extra periods
+A <- ncol(endo)-1
+
+y_cov <- array(NA, dim=c(N1+N2, A, A))
+
+lambda <- exp(log(0.5)/52) # 1Y half-life exponential decay
+wts <- lambda ^ (seq.int(0, y_offset+N1+N2))
+for(n in 1:nrow(y_cov)) {
+  ind <- seq.int(FIRST_DATA_SET+n-1) #extra -1 in the index because we are lagging these an extra step
+  y_cov[n,,] <- cov.wt(endo[ind,-1],rev(wts[ind]), center=F)$cov  
+}
+```
+
+Prepare the rest of the data
+
+```{r stan_data}
+stan_data <- list(A=length(unique(forecast_data$Asset)),
+                  T=length(unique(forecast_data$Date)),
+                  J=6,T_1=52,
+                  Y=forecast_data %>% 
+                    select(Date, Asset, endo) %>% 
+                    spread(Asset, endo) %>%
+                    select(-Date),
+                  X=forecast_data %>% 
+                    select(-endo, -is_training, -Date) %>%
+                    nest(-Asset) %>%
+                    {abind(.$data, along=3, new.names=.$Asset)},
+                  y_cov=y_cov[3:504,,],
+                  proxmat=proximity %>% 
+                    ungroup() %>%
+                    spread(x_Date, value) %>%
+                    select(-Date) %>% 
+                    as.matrix())
+```
+
+Run direct maximum likelihood optimization instead of Hamiltonian Monte Carlo due to time constraints.
+```{r optim_stan, cache=TRUE}
+fit_weighted_mvn <- optimizing(weighted_mvn_model, data=stan_data)
+```
+Extract parameters
+```{r}
+matrix(fit_weighted_mvn$par[grep("beta", names(fit_weighted_mvn$par))],
+       with(stan_data,T-T_1), stan_data$J, byrow=T, dimnames=list(NULL, unique(exogs$Exog))) %>%
+  as.data.frame() %>%
+  mutate(Date=endo$Date[stan_data$T_1:(stan_data$T-1)]) %>%
+  gather(Exog,value,-Date) ->
+  beta
+
+beta %>% 
+  ggplot(aes(x=Date, y=value, col=Exog)) + geom_line(alpha=0.6) + ggtitle("Betas over Time") + scale_color_manual(values=exog_colors)
+```
+The betas could be artificially induced to be more stable, as in a State Space Model. The fact that they are not naturally so, and have such small values, indicates that most of the variation in asset returns cannot be explained by the weighted model.
+
+How well did the model predict returns?
+
+```{r}
+matrix(fit_weighted_mvn$par[grep("y_hat", names(fit_weighted_mvn$par))],
+       with(stan_data,T-T_1), stan_data$A, byrow=T, dimnames=list(NULL, colnames(endo)[-1])) %>%
+  as.data.frame() %>%
+  mutate(Date=endo$Date[stan_data$T_1:(stan_data$T-1)]) %>%
+  gather(Asset,y_hat,-Date) ->
+  y_hat
+
+y_hat %>% 
+  drop_na() %>%
+  inner_join(endo %>% gather(Asset, value, -Date), by=c("Asset","Date")) %>% 
+  summarize(Model="analogy_mvn", MSE=10000*mean((value-y_hat)^2)) %>% 
+  bind_rows(MSE) %>%
+  arrange(desc(MSE)) ->
+  MSE
+MSE %>% knitr::kable(digits=3)
+```
+On its own, the analogy-weighted model is one of the poorest options.
+
+## Taming the Chaos
+
+
+
+# References
