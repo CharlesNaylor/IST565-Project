@@ -19,3 +19,8 @@ e1071
 abind
 StanHeaders
 rstan
+readxl
+zoo
+xts
+TTR
+quantmod

@@ -178,8 +178,8 @@ agents, and small measurement errors compound. For example, it is
 impossible to tell the periodicity of market data without context. A
 day's worth of price movements at 5-minute increments looks the same as
 a year's worth of daily movements. The asset price measures the result
-of a chaotic, nonlinear dynamical system: a scale-free
-network\texttt{\textless{}insert\ reference\ to\ Barabasi\textgreater{}}.
+of a chaotic, nonlinear dynamical system: a scale-free network (Barabasi
+2002).
 
 \subsection{Motivation}\label{motivation}
 
@@ -203,20 +203,18 @@ filter requires careful tuning of the relationship between its output
 variables, and of the covariance of evolution of its factor weightings.
 
 Prior work has been done on the same data set as a case study of
-generative Bayesian forecasting
-techniques\texttt{\textless{}insert\ GP\ reference\textgreater{}}. The
-study applied a Gaussian Process Regression to panel data for 11 of the
-most traded world currencies. The result was a well-specified and
-validated forecasting model whose error term was far larger than its
-signal. This jibed with the results seen professionally using a Kalman
-Filter, but thanks to posterior predictive checking the flaws are
-glaringly obvious. Can this, or a similar forecast, be improved?
+generative Bayesian forecasting techniques (Naylor 2017). The study
+applied a Gaussian Process Regression to panel data for 11 of the most
+traded world currencies. The result was a well-specified and validated
+forecasting model whose error term was far larger than its signal. This
+jibed with the results seen professionally using a Kalman Filter, but
+thanks to posterior predictive checking the flaws are glaringly obvious.
+Can this, or a similar forecast, be improved?
 
 Work is being done at the University of Maryland into the application of
-neural network reservoirs to chaotic
-systems.\texttt{\textless{}insert\ Pathak\ reference\textgreater{}}
-After surveying some simpler machine learning techniques, this project
-will apply these techniques to the residuals of the Gaussian Process
+neural network reservoirs to chaotic systems (Pathak et al. 2018). After
+surveying some simpler machine learning techniques, this project will
+apply these techniques to the residuals of the Gaussian Process
 regression, or in combination with some other regression on the panel
 data.
 
@@ -233,32 +231,105 @@ data.
 
 \section{The Data}\label{the-data}
 
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{knitr}\OperatorTok{::}\NormalTok{opts_chunk}\OperatorTok{$}\KeywordTok{set}\NormalTok{(}
+    \DataTypeTok{message =} \OtherTok{FALSE}\NormalTok{,}
+    \DataTypeTok{warning =} \OtherTok{FALSE}\NormalTok{,}
+    \DataTypeTok{include =} \OtherTok{FALSE}
+\NormalTok{)}
+\NormalTok{packages <-}\StringTok{ }\KeywordTok{c}\NormalTok{(}\StringTok{"tidyverse"}\NormalTok{, }\StringTok{"scales"}\NormalTok{, }\StringTok{"lubridate"}\NormalTok{, }\StringTok{"ggthemes"}\NormalTok{, }\StringTok{"randomForest"}\NormalTok{, }\StringTok{"cluster"}\NormalTok{, }\StringTok{"e1071"}\NormalTok{, }\StringTok{"abind"}\NormalTok{)}
+\KeywordTok{lapply}\NormalTok{(packages, }\ControlFlowTok{function}\NormalTok{(X)\{}\KeywordTok{suppressPackageStartupMessages}\NormalTok{(}\KeywordTok{library}\NormalTok{(X, }\DataTypeTok{character.only=}\NormalTok{T))\})}
+\end{Highlighting}
+\end{Shaded}
+
 Data consists of the weekly currency returns, plus a raft of weekly
 economic data.
 
-\subsection{Y variables}\label{y-variables}
+\subsection{Initial Data Gathering}\label{initial-data-gathering}
+
+While efforts were made to use free data as much as possible, even after
+extensive clean-up, much of it was of inadequate quality. Even
+proprietary data from Bloomberg's professional API took some work to put
+into proper format. Shown below is a digest of some of the tribulations
+undergone in putting the economic data in order. The full experience can
+be examined in the documentation for (Naylor 2017).
+
+\subsubsection{Swap Rates}\label{swap-rates}
+
+As mentioned before, returns on FX consist of two elements: changes in
+the spot rate, i.e.~the exchange rate for physical currency, and the
+interest rate differential between the two currencies in the pair. In
+this study, all returns were considered versus the USD.
+
+Swap rates are the interest rates offered on short-term debt instruments
+known as Swaps, and are often used as a proxy for the interest rate
+differential. The ideal source would be the implied 1M forward rate,
+which is literally what investors will receive. There were a few options
+to check.
+
+Read in raw data from Bloomberg.
+
+Even in supposedly clean and pre-checked data from Bloomberg, there were
+clear errors. The Norwegian Krone did not pay -60\% monthly interest in
+the year 2000. Turkey, however, did suffer from hyper-inflation in the
+early 2000s, and so those high values are probably accurate. The EUR 1M
+Swap rate is obviously wrong, too; it's been the same value for nearly
+10 years. The implied rate, which is backed out from the forward points,
+looks more realistic, but it can be messy.
+
+Australia and Norway can be backfilled with the 1M swap data. More
+worrisome is the choppiness in the forward points (and hence the implied
+rate) for CHF, CZK, and SEK.
+
+\subsubsection{Spot Rates}\label{spot-rates}
+
+Spot rates, at least should be freely available. However, once again,
+data from Yahoo turned out to be poor enough that proprietary Bloomberg
+data was needed. Supposedly weekly data from Yahoo included some data
+marked from all days of the week, although not all with the same
+frequency.
+
+\subsubsection{Equity Indexes}\label{equity-indexes}
+
+These are indicators of overall stock market performance, for example
+the Dow and the S\&P 500 indexes in the US. Data for equity indexes on
+Quandl was not up to date. Yahoo had most of it.
+
+Data was patchy for CHF, NZD, and TRY, and non-existant for CZK and NOK.
+CZK and NOK were filled in using data downloaded directly from their
+respective Bourse's websites.
+
+Finally, there were some timing issues with antipodal stock exchanges.
+Yahoo provided all data in the US Eastern time zone, so that AUD and NZD
+exchanges open on Sunday night instead of Monday morning. Since the plan
+is to use weekly signals, this data needed to be put back in local
+timezones.
+
+\subsection{Factors}\label{factors}
+
+The raw data gathered above needed to be transformed into exogenous
+variables, typically known as `factors' in finance, but often as
+`features' in machine learning parlance. Again, due to space
+constraints, the full backfilling and conversion code can be found in
+(Naylor 2017), in the
+\href{https://charlesnaylor.github.io/gp_regression/doc/Calculating_Factors.html}{Calculating
+Factors} section.
+
+\subsubsection{Y variables}\label{y-variables}
 
 The endogenous, `Y' variable comprises weekly currency returns on 11
 currencies for a ten-year period starting in 2007 and ending in 2017.
 
 Weekly currency returns consist of the change in spot rate against the
 US dollar, plus the carry, defined as the (time-adjusted) difference in
-1 month forward rates between the local currency and the USD. Without
-going into detail, the forward rates are a reasonable proxy for what a
-professional speculator might expect to earn by placing trades using
-currency derivatives.
+1 month forward rates between the local currency and the USD.
 
-It's important to note that our endogenous variable is
-\emph{multivariate}. We cannot assume that different currencies have
-returns that are independent of one another.
+It's important to note that the endogenous variable is
+\emph{multivariate}. One cannot assume that different currencies'
+returns are independent of one another.
 
-\begin{verbatim}
-## Warning: Removed 22 rows containing missing values (geom_path).
-\end{verbatim}
-
-\includegraphics{Econometric_FX_Forecasting_files/figure-latex/graph_endos-1.pdf}
-
-\subsection{X variables}\label{x-variables}
+\subsubsection{X variables}\label{x-variables}
 
 The exogenous, `X' variables consist of weekly data for the following:
 
@@ -271,19 +342,23 @@ Equity\_d8W & The 8 week change in the local equity index\tabularnewline
 Spot\_d8W & The 8 week change in spot rates\tabularnewline
 SwapRate2Y & The 2Y Swap Rate\tabularnewline
 TwoYear\_d8W & The 8 week change in 2Y Swap rate\tabularnewline
-YieldCurve & The spread between 10Y and 2Y Swaps\tabularnewline
+YieldCurve & The spread between 10Y and 2Y Swap rates\tabularnewline
 \bottomrule
 \end{longtable}
 
+A great deal of currency appreciation is caused by changes in
+expectations of interest rates. Hence three of the five factors being
+used measure some aspect of those expectations. The change in Equity
+indexes is meant to proxy overall economic health. The change in prior
+spot rate is a `momentum' indicator, a crude attempt to capture the
+chaotic dynamics of competitive agents in an iterative system.
+
 There is clear room for improvement if we were to fit a model that
-permitted multiple time scales, such as a MIDAS
-regression\texttt{\textless{}insert\ midas\ ref\textgreater{}}. It would
+permitted multiple time scales, such as a MIDAS regression. It would
 also be usual to include some sort of measure of liquidity and credit
 conditions.
 
 These variables have been scaled and normalized.
-
-\includegraphics{Econometric_FX_Forecasting_files/figure-latex/graph_exogs-1.pdf}
 
 Note that Carry is not a stochastic variable. It is, however, a rate,
 and impacts asset returns consistently at that rate. It's also worth
@@ -333,26 +408,6 @@ there are differences between countries.
 Assume the market reactions to economic conditions are the same across
 all countries.
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\CommentTok{# Organize data into per-row observation matrix}
-\NormalTok{endo }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{gather}\NormalTok{(Asset, value, }\OperatorTok{-}\NormalTok{Date) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{mutate}\NormalTok{(}\DataTypeTok{Exog=}\StringTok{"Endo"}\NormalTok{) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{bind_rows}\NormalTok{(exogs) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{filter}\NormalTok{(Date }\OperatorTok{>=}\KeywordTok{as.Date}\NormalTok{(}\StringTok{"2008-01-04"}\NormalTok{)) }\OperatorTok{%>%}\StringTok{ }\CommentTok{#endo has more data than exog at the beginning}
-\StringTok{  }\KeywordTok{filter}\NormalTok{(Date }\OperatorTok{<=}\KeywordTok{as.Date}\NormalTok{(}\StringTok{"2017-08-18"}\NormalTok{)) }\OperatorTok{%>%}\StringTok{ }\CommentTok{#exog has more data than endo at the end}
-\StringTok{  }\KeywordTok{unite}\NormalTok{(asset_exog, }\KeywordTok{c}\NormalTok{(}\StringTok{"Asset"}\NormalTok{, }\StringTok{"Exog"}\NormalTok{)) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{spread}\NormalTok{(asset_exog, value) ->}
-\StringTok{  }\NormalTok{all_obs_matrix}
-
-\NormalTok{all_obs_matrix }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{Date) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{daisy}\NormalTok{(}\DataTypeTok{metric=}\StringTok{"euclidean"}\NormalTok{) ->}
-\StringTok{  }\NormalTok{global_dissimilarity}
-\end{Highlighting}
-\end{Shaded}
-
 \paragraph{Principal Component
 Analysis}\label{principal-component-analysis}
 
@@ -361,27 +416,6 @@ feature space is high-dimensional. First, groupings of weeks were
 examined using the first two principal components. These might form the
 basis of later visualizations.
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{all_obs_matrix }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{Date) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{prcomp}\NormalTok{() ->}\StringTok{ }
-\StringTok{  }\NormalTok{global_pca}
-
-\CommentTok{#Plot}
-\NormalTok{(global_pca}\OperatorTok{$}\NormalTok{x }\OperatorTok{%*%}\StringTok{ }\NormalTok{global_pca}\OperatorTok{$}\NormalTok{rotation[,}\DecValTok{1}\OperatorTok{:}\DecValTok{2}\NormalTok{]) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{as_tibble}\NormalTok{() }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{bind_cols}\NormalTok{(all_obs_matrix }\OperatorTok{%>%}\StringTok{ }
-\StringTok{                }\KeywordTok{transmute}\NormalTok{(}\DataTypeTok{Year=}\KeywordTok{decimal_date}\NormalTok{(Date))) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{ggplot}\NormalTok{(}\KeywordTok{aes}\NormalTok{(}\DataTypeTok{x=}\NormalTok{PC1,}\DataTypeTok{y=}\NormalTok{PC2, }\DataTypeTok{col=}\NormalTok{Year)) }\OperatorTok{+}
-\StringTok{  }\KeywordTok{theme_bw}\NormalTok{() }\OperatorTok{+}
-\StringTok{  }\KeywordTok{scale_color_gradient}\NormalTok{(}\DataTypeTok{low=}\StringTok{"red"}\NormalTok{,}\DataTypeTok{high=}\StringTok{"blue"}\NormalTok{)}\OperatorTok{+}
-\StringTok{  }\KeywordTok{geom_point}\NormalTok{(}\DataTypeTok{alpha=}\FloatTok{0.25}\NormalTok{) }\OperatorTok{+}\StringTok{ }
-\StringTok{  }\KeywordTok{ggtitle}\NormalTok{(}\StringTok{"First 2 Principal Components"}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\includegraphics{Econometric_FX_Forecasting_files/figure-latex/pr_comp-1.pdf}
 There is not much evidence of clear regime clusters here.
 
 \paragraph{Per-Country Regimes}\label{per-country-regimes}
@@ -402,28 +436,6 @@ the purposes of validation, the cut was made at 5.
 
 The identified cluster for each week can be seen below:
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{global_hclust <-}\StringTok{ }\KeywordTok{hclust}\NormalTok{(global_dissimilarity, }\DataTypeTok{method=}\StringTok{'complete'}\NormalTok{)}
-
-\NormalTok{all_obs_matrix }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{select}\NormalTok{(Date) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{mutate}\NormalTok{(}\DataTypeTok{Regime=}\KeywordTok{factor}\NormalTok{(}\KeywordTok{cutree}\NormalTok{(global_hclust, }\DataTypeTok{k=}\DecValTok{5}\NormalTok{)),}
-         \DataTypeTok{Year=}\KeywordTok{factor}\NormalTok{(}\KeywordTok{year}\NormalTok{(Date)),}
-         \DataTypeTok{Week=}\KeywordTok{week}\NormalTok{(Date)) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{ggplot}\NormalTok{(}\KeywordTok{aes}\NormalTok{(}\DataTypeTok{x=}\NormalTok{Week, }\DataTypeTok{y=}\DecValTok{0}\NormalTok{, }\DataTypeTok{fill=}\NormalTok{Regime)) }\OperatorTok{+}
-\StringTok{    }\KeywordTok{theme_pander}\NormalTok{() }\OperatorTok{+}
-\StringTok{    }\KeywordTok{facet_grid}\NormalTok{(Year}\OperatorTok{~}\NormalTok{., }\DataTypeTok{switch=}\StringTok{"y"}\NormalTok{) }\OperatorTok{+}
-\StringTok{    }\KeywordTok{geom_tile}\NormalTok{(}\DataTypeTok{color=}\StringTok{"white"}\NormalTok{) }\OperatorTok{+}\StringTok{ }
-\StringTok{    }\KeywordTok{scale_fill_brewer}\NormalTok{(}\DataTypeTok{type=}\StringTok{"qual"}\NormalTok{,}\DataTypeTok{palette=}\StringTok{"Set1"}\NormalTok{) }\OperatorTok{+}
-\StringTok{    }\KeywordTok{theme}\NormalTok{(}\DataTypeTok{strip.text.y =} \KeywordTok{element_text}\NormalTok{(}\DataTypeTok{angle=}\DecValTok{180}\NormalTok{),}
-          \DataTypeTok{axis.text.y=}\KeywordTok{element_blank}\NormalTok{(), }
-          \DataTypeTok{axis.ticks.y =} \KeywordTok{element_blank}\NormalTok{()) }\OperatorTok{+}\StringTok{ }\KeywordTok{ylab}\NormalTok{(}\StringTok{""}\NormalTok{) }\OperatorTok{+}
-\StringTok{    }\KeywordTok{ggtitle}\NormalTok{(}\StringTok{"Hierarchical Clustering Global Regimes"}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\includegraphics{Econometric_FX_Forecasting_files/figure-latex/hclust-1.pdf}
 There are a lot of contiguous blocks, so the technique has clearly
 identified something.
 
@@ -431,7 +443,6 @@ identified something.
 
 How well does the technique work when applied to individual countries?
 
-\includegraphics{Econometric_FX_Forecasting_files/figure-latex/per_asset_hclust-1.pdf}
 There is still quite a lot of commonality between regimes. The least
 similar currency is the Turkish Lira, on the bottom row. The British
 Pound (middle row) enters a new regime 3 weeks \emph{before} the vote on
@@ -444,30 +455,6 @@ Unlike hierarchical clustering, K-means clustering looks at the data
 holistically, and attempts to create groups of points around an
 arbitrary number of centers. 5 centers were chosen to match the regimes
 identified earlier.
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{global_kmeans <-}\StringTok{ }\KeywordTok{kmeans}\NormalTok{(all_obs_matrix }\OperatorTok{%>%}\StringTok{ }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{Date),}
-                        \DataTypeTok{centers=}\DecValTok{5}\NormalTok{)}
-
-\NormalTok{all_obs_matrix }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{select}\NormalTok{(Date) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{mutate}\NormalTok{(}\DataTypeTok{Regime=}\KeywordTok{factor}\NormalTok{(global_kmeans}\OperatorTok{$}\NormalTok{cluster),}
-         \DataTypeTok{Year=}\KeywordTok{factor}\NormalTok{(}\KeywordTok{year}\NormalTok{(Date)),}
-         \DataTypeTok{Week=}\KeywordTok{week}\NormalTok{(Date)) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{ggplot}\NormalTok{(}\KeywordTok{aes}\NormalTok{(}\DataTypeTok{x=}\NormalTok{Week, }\DataTypeTok{y=}\DecValTok{0}\NormalTok{, }\DataTypeTok{fill=}\NormalTok{Regime)) }\OperatorTok{+}
-\StringTok{    }\KeywordTok{theme_pander}\NormalTok{() }\OperatorTok{+}
-\StringTok{    }\KeywordTok{facet_grid}\NormalTok{(Year}\OperatorTok{~}\NormalTok{., }\DataTypeTok{switch=}\StringTok{"y"}\NormalTok{) }\OperatorTok{+}
-\StringTok{    }\KeywordTok{geom_tile}\NormalTok{(}\DataTypeTok{color=}\StringTok{"white"}\NormalTok{) }\OperatorTok{+}\StringTok{ }
-\StringTok{    }\KeywordTok{scale_fill_brewer}\NormalTok{(}\DataTypeTok{type=}\StringTok{"qual"}\NormalTok{,}\DataTypeTok{palette=}\StringTok{"Set1"}\NormalTok{) }\OperatorTok{+}
-\StringTok{    }\KeywordTok{theme}\NormalTok{(}\DataTypeTok{strip.text.y =} \KeywordTok{element_text}\NormalTok{(}\DataTypeTok{angle=}\DecValTok{180}\NormalTok{),}
-          \DataTypeTok{axis.text.y=}\KeywordTok{element_blank}\NormalTok{(), }
-          \DataTypeTok{axis.ticks.y =} \KeywordTok{element_blank}\NormalTok{()) }\OperatorTok{+}\StringTok{ }\KeywordTok{ylab}\NormalTok{(}\StringTok{""}\NormalTok{) }\OperatorTok{+}
-\StringTok{    }\KeywordTok{ggtitle}\NormalTok{(}\StringTok{"Hierarchical Clustering Global Regimes"}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\includegraphics{Econometric_FX_Forecasting_files/figure-latex/global_kmean-1.pdf}
 
 Although the Regime numbers are different, the pattern looks fairly
 similar to the global regimes made using hierarchical clustering.
@@ -498,46 +485,6 @@ time series.
 To make things convenient, move the data out of tidy format, and match
 up next week's returns to this week's forecasting data:
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{TRAINING_CUTOFF =}\StringTok{ }\KeywordTok{ymd}\NormalTok{(}\DecValTok{20121029}\NormalTok{)}
-\CommentTok{#stack and combine lagged asset returns with exogenous variables}
-\NormalTok{endo }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{mutate_at}\NormalTok{(}\KeywordTok{vars}\NormalTok{(}\OperatorTok{-}\NormalTok{Date),lead) }\OperatorTok{%>%}\StringTok{ }\CommentTok{#dplyr parlance has moving endos one week back as a "lead".}
-\StringTok{  }\KeywordTok{remove_missing}\NormalTok{() }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{gather}\NormalTok{(Asset, endo, }\OperatorTok{-}\NormalTok{Date) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{inner_join}\NormalTok{(exogs, }\DataTypeTok{by=}\KeywordTok{c}\NormalTok{(}\StringTok{"Date"}\NormalTok{,}\StringTok{"Asset"}\NormalTok{)) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{mutate}\NormalTok{(}\DataTypeTok{is_training=}\NormalTok{ Date}\OperatorTok{<}\NormalTok{TRAINING_CUTOFF) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{spread}\NormalTok{(Exog, value) ->}
-\StringTok{  }\NormalTok{forecast_data}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## Warning: Removed 3 rows containing missing values.
-\end{verbatim}
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\KeywordTok{glimpse}\NormalTok{(forecast_data)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## Observations: 5,522
-## Variables: 10
-## $ Date        <date> 2008-01-04, 2008-01-04, 2008-01-04, 2008-01-04, 2...
-## $ Asset       <chr> "AUD", "CAD", "CHF", "CZK", "EUR", "GBP", "JPY", "...
-## $ endo        <dbl> -0.0119246426, -0.0073437496, 0.0032708987, -0.021...
-## $ is_training <lgl> TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TR...
-## $ carry       <dbl> 0.9298046, 0.1128621, -0.1654536, 0.1353255, 0.197...
-## $ constant    <dbl> 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,...
-## $ d_carry     <dbl> -0.03776817, 0.16692213, 1.53078784, 0.20935335, 1...
-## $ eqy_z       <dbl> -0.29407175, 0.45187138, 0.22751153, -0.13570337, ...
-## $ spot_z      <dbl> -0.94082333, -1.60569442, -0.93559429, -1.20760013...
-## $ yc_z        <dbl> -3.68560665, -0.24557129, -1.99447935, -3.34662631...
-\end{verbatim}
-
 \subsubsection{Support Vector Machines}\label{support-vector-machines}
 
 Although Support Vector Machines (SVMs) are traditionally used for
@@ -552,57 +499,8 @@ now, it will be assumed this is so.
 
 Try an initial run without tuning:
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{forecast_data }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{filter}\NormalTok{(is_training) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{constant, }\OperatorTok{-}\NormalTok{Date,}\OperatorTok{-}\NormalTok{Asset, }\OperatorTok{-}\NormalTok{is_training) }\OperatorTok{%>%}\StringTok{ }\CommentTok{#a constant carries no information for a support vector machine, I believe}
-\StringTok{  }\NormalTok{\{}\KeywordTok{svm}\NormalTok{(}\KeywordTok{as.formula}\NormalTok{(}\StringTok{"endo~."}\NormalTok{), }\DataTypeTok{data=}\NormalTok{., }\DataTypeTok{type=}\StringTok{"eps-regression"}\NormalTok{, }\DataTypeTok{kernel=}\StringTok{"radial"}\NormalTok{)\} ->}
-\StringTok{  }\NormalTok{svm_base}
-\KeywordTok{summary}\NormalTok{(svm_base)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## 
-## Call:
-## svm(formula = as.formula("endo~."), data = ., type = "eps-regression", 
-##     kernel = "radial")
-## 
-## 
-## Parameters:
-##    SVM-Type:  eps-regression 
-##  SVM-Kernel:  radial 
-##        cost:  1 
-##       gamma:  0.2 
-##     epsilon:  0.1 
-## 
-## 
-## Number of Support Vectors:  2504
-\end{verbatim}
-
 2500 support vectors suggests the regression may not be robust. How well
 does it forecast returns for the remaining period?
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{forecast_data }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{filter}\NormalTok{(}\OperatorTok{!}\NormalTok{is_training) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{constant, }\OperatorTok{-}\NormalTok{Date, }\OperatorTok{-}\NormalTok{Asset, }\OperatorTok{-}\NormalTok{is_training) }\OperatorTok{%>%}
-\StringTok{  }\NormalTok{\{}\KeywordTok{predict}\NormalTok{(svm_base, }\DataTypeTok{newdata =}\NormalTok{ .)\} ->}\StringTok{ }
-\StringTok{  }\NormalTok{svm_base_hat}
-
-\NormalTok{forecast_data }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{filter}\NormalTok{(}\OperatorTok{!}\NormalTok{is_training) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{select}\NormalTok{(endo) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{bind_cols}\NormalTok{(}\DataTypeTok{svm_base=}\NormalTok{svm_base_hat) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{summarize}\NormalTok{(}\DataTypeTok{SSR=}\KeywordTok{sum}\NormalTok{((endo}\OperatorTok{-}\NormalTok{svm_base)}\OperatorTok{^}\DecValTok{2}\NormalTok{)) }\OperatorTok{%>%}\StringTok{ }\KeywordTok{pull}\NormalTok{(SSR) }\OperatorTok{%>%}\StringTok{ }\KeywordTok{print}\NormalTok{(}\DataTypeTok{digits=}\DecValTok{3}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## [1] 0.597
-\end{verbatim}
 
 It remains to be seen how good that SSR score is. Practitioners
 typically have low expectations for goodness of fit and rely on various
@@ -625,137 +523,17 @@ respect to the economic data. Finally, it is likely this regression will
 be noisy, so \(\gamma\) should be set low to reflect the high variance
 in the data.
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{forecast_data }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{filter}\NormalTok{(is_training) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{constant, }\OperatorTok{-}\NormalTok{Date,}\OperatorTok{-}\NormalTok{Asset, }\OperatorTok{-}\NormalTok{is_training) }\OperatorTok{%>%}\StringTok{ }\CommentTok{#a constant carries no information for a support vector machine, I believe}
-\StringTok{  }\NormalTok{\{}\KeywordTok{svm}\NormalTok{(}\KeywordTok{as.formula}\NormalTok{(}\StringTok{"endo~."}\NormalTok{), }\DataTypeTok{data=}\NormalTok{., }\DataTypeTok{type=}\StringTok{"eps-regression"}\NormalTok{, }\DataTypeTok{kernel=}\StringTok{"radial"}\NormalTok{, }\DataTypeTok{cost=}\DecValTok{1000}\NormalTok{)\} ->}
-\StringTok{  }\NormalTok{svm_occam}
-\KeywordTok{summary}\NormalTok{(svm_occam)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## 
-## Call:
-## svm(formula = as.formula("endo~."), data = ., type = "eps-regression", 
-##     kernel = "radial", cost = 1000)
-## 
-## 
-## Parameters:
-##    SVM-Type:  eps-regression 
-##  SVM-Kernel:  radial 
-##        cost:  1000 
-##       gamma:  0.2 
-##     epsilon:  0.1 
-## 
-## 
-## Number of Support Vectors:  2549
-\end{verbatim}
-
 The cost parameter actually increased the number of support vectors
 found.
 
 Fit a polynomial kernel:
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{forecast_data }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{filter}\NormalTok{(is_training) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{constant, }\OperatorTok{-}\NormalTok{Date,}\OperatorTok{-}\NormalTok{Asset, }\OperatorTok{-}\NormalTok{is_training) }\OperatorTok{%>%}\StringTok{ }\CommentTok{#a constant carries no information for a support vector machine, I believe}
-\StringTok{  }\NormalTok{\{}\KeywordTok{svm}\NormalTok{(}\KeywordTok{as.formula}\NormalTok{(}\StringTok{"endo~."}\NormalTok{), }\DataTypeTok{data=}\NormalTok{., }\DataTypeTok{type=}\StringTok{"eps-regression"}\NormalTok{, }\DataTypeTok{kernel=}\StringTok{"polynomial"}\NormalTok{, }\DataTypeTok{coe0=}\DecValTok{0}\NormalTok{, }\DataTypeTok{d=}\DecValTok{3}\NormalTok{, }\DataTypeTok{cost=}\DecValTok{1000}\NormalTok{)\} ->}
-\StringTok{  }\NormalTok{svm_poly}
-\KeywordTok{summary}\NormalTok{(svm_poly)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## 
-## Call:
-## svm(formula = as.formula("endo~."), data = ., type = "eps-regression", 
-##     kernel = "polynomial", coe0 = 0, d = 3, cost = 1000)
-## 
-## 
-## Parameters:
-##    SVM-Type:  eps-regression 
-##  SVM-Kernel:  polynomial 
-##        cost:  1000 
-##      degree:  3 
-##       gamma:  0.2 
-##      coef.0:  0 
-##     epsilon:  0.1 
-## 
-## 
-## Number of Support Vectors:  2495
-\end{verbatim}
 
 This one failed to converge, so higher orders of polynomial are right
 out.
 
 Finally, set gamma low:
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{forecast_data }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{filter}\NormalTok{(is_training) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{constant, }\OperatorTok{-}\NormalTok{Date,}\OperatorTok{-}\NormalTok{Asset, }\OperatorTok{-}\NormalTok{is_training) }\OperatorTok{%>%}\StringTok{ }\CommentTok{#a constant carries no information for a support vector machine, I believe}
-\StringTok{  }\NormalTok{\{}\KeywordTok{svm}\NormalTok{(}\KeywordTok{as.formula}\NormalTok{(}\StringTok{"endo~."}\NormalTok{), }\DataTypeTok{data=}\NormalTok{., }\DataTypeTok{type=}\StringTok{"eps-regression"}\NormalTok{, }\DataTypeTok{kernel=}\StringTok{"radial"}\NormalTok{, }\DataTypeTok{cost=}\DecValTok{1000}\NormalTok{, }\DataTypeTok{gamma=}\FloatTok{0.001}\NormalTok{)\} ->}
-\StringTok{  }\NormalTok{svm_gamma}
-\KeywordTok{summary}\NormalTok{(svm_gamma)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## 
-## Call:
-## svm(formula = as.formula("endo~."), data = ., type = "eps-regression", 
-##     kernel = "radial", cost = 1000, gamma = 0.001)
-## 
-## 
-## Parameters:
-##    SVM-Type:  eps-regression 
-##  SVM-Kernel:  radial 
-##        cost:  1000 
-##       gamma:  0.001 
-##     epsilon:  0.1 
-## 
-## 
-## Number of Support Vectors:  2514
-\end{verbatim}
-
 Compare the four models, using Mean Squared Error this time:
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\KeywordTok{list}\NormalTok{(}\DataTypeTok{base=}\NormalTok{svm_base, }\DataTypeTok{simple=}\NormalTok{svm_occam, }\DataTypeTok{poly=}\NormalTok{svm_poly, }\DataTypeTok{gamma=}\NormalTok{svm_gamma) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{map_dfr}\NormalTok{(}\ControlFlowTok{function}\NormalTok{(model) \{}
-\NormalTok{    forecast_data }\OperatorTok{%>%}
-\StringTok{      }\KeywordTok{filter}\NormalTok{(}\OperatorTok{!}\NormalTok{is_training) }\OperatorTok{%>%}
-\StringTok{      }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{constant, }\OperatorTok{-}\NormalTok{Date, }\OperatorTok{-}\NormalTok{Asset, }\OperatorTok{-}\NormalTok{is_training) }\OperatorTok{%>%}
-\StringTok{      }\NormalTok{\{}\KeywordTok{predict}\NormalTok{(model, }\DataTypeTok{newdata =}\NormalTok{ .)\} }\OperatorTok{%>%}\StringTok{ }
-\StringTok{      }\KeywordTok{bind_cols}\NormalTok{(}\DataTypeTok{hat=}\NormalTok{.,}
-\NormalTok{                forecast_data }\OperatorTok{%>%}\StringTok{ }
-\StringTok{                  }\KeywordTok{filter}\NormalTok{(}\OperatorTok{!}\NormalTok{is_training) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{                  }\KeywordTok{select}\NormalTok{(endo)) }\OperatorTok{%>%}
-\StringTok{      }\KeywordTok{summarize}\NormalTok{(}\DataTypeTok{MSE=}\DecValTok{10000}\OperatorTok{*}\KeywordTok{mean}\NormalTok{((endo}\OperatorTok{-}\NormalTok{hat)}\OperatorTok{^}\DecValTok{2}\NormalTok{)) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{      }\KeywordTok{select}\NormalTok{(MSE) }
-\NormalTok{  \}, }\DataTypeTok{.id=}\StringTok{"SVM"}\NormalTok{) }\OperatorTok{%>%}
-\StringTok{  }\NormalTok{knitr}\OperatorTok{::}\KeywordTok{kable}\NormalTok{(}\DataTypeTok{digits=}\DecValTok{3}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{longtable}[]{@{}lr@{}}
-\toprule
-SVM & MSE\tabularnewline
-\midrule
-\endhead
-base & 2.171\tabularnewline
-simple & 11.369\tabularnewline
-poly & 2.485\tabularnewline
-gamma & 1.987\tabularnewline
-\bottomrule
-\end{longtable}
 
 The model assuming higher noise did the best. Something very strange is
 going on the the high-cost `simple' model, which wound up less simple
@@ -764,7 +542,7 @@ than the base.
 It's notable for all of these that the number of support vectors is
 close to the number of observations (around 90\%), and that high
 penalties are not helping the model find an easier solution. SVMs are
-probably the wrong approach for this forecasts this noisy.
+probably the wrong approach for forecasts this noisy.
 
 \subsection{Random Forests}\label{random-forests}
 
@@ -781,20 +559,6 @@ time. The \texttt{randomForest} function in R can also be set to return
 a proximity measure, similar to the dissimilarity matrixes calculated
 above for the classifiers. More on this later.
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{forecast_data }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{filter}\NormalTok{(is_training) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{constant, }\OperatorTok{-}\NormalTok{Date, }\OperatorTok{-}\NormalTok{Asset, }\OperatorTok{-}\NormalTok{is_training) }\OperatorTok{%>%}
-\StringTok{  }\NormalTok{\{}\KeywordTok{randomForest}\NormalTok{(}\KeywordTok{as.formula}\NormalTok{(}\StringTok{"endo~."}\NormalTok{), }\DataTypeTok{data=}\NormalTok{.)\} ->}
-\StringTok{  }\NormalTok{rf_base}
-
-\KeywordTok{plot}\NormalTok{(rf_base)}
-\end{Highlighting}
-\end{Shaded}
-
-\includegraphics{Econometric_FX_Forecasting_files/figure-latex/rf-1.pdf}
-
 There is not much gain from fitting more than about 25 trees.
 
 As before, there should be relatively few nodes in the tree, reflecting
@@ -802,59 +566,8 @@ relatively few possible macroeconomic regimes for economies. How well
 does the Random Forest regression do when \texttt{maxnodes} has been set
 quite low?
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{forecast_data }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{filter}\NormalTok{(is_training) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{constant, }\OperatorTok{-}\NormalTok{Date, }\OperatorTok{-}\NormalTok{Asset, }\OperatorTok{-}\NormalTok{is_training) }\OperatorTok{%>%}
-\StringTok{  }\NormalTok{\{}\KeywordTok{randomForest}\NormalTok{(}\KeywordTok{as.formula}\NormalTok{(}\StringTok{"endo~."}\NormalTok{), }\DataTypeTok{data=}\NormalTok{., }\DataTypeTok{maxnodes=}\DecValTok{20}\NormalTok{)\} ->}
-\StringTok{  }\NormalTok{rf_fewnodes}
-
-\KeywordTok{plot}\NormalTok{(rf_fewnodes)}
-\end{Highlighting}
-\end{Shaded}
-
-\includegraphics{Econometric_FX_Forecasting_files/figure-latex/rf_fewnodes-1.pdf}
-
 That seems to have done just as well. Update the Mean Squared Error
 table:
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\KeywordTok{list}\NormalTok{(}\DataTypeTok{svm_base=}\NormalTok{svm_base, }\DataTypeTok{svm_simple=}\NormalTok{svm_occam, }\DataTypeTok{svm_poly=}\NormalTok{svm_poly, }
-     \DataTypeTok{svm_gamma=}\NormalTok{svm_gamma, }\DataTypeTok{rndForest=}\NormalTok{rf_base, }\DataTypeTok{rf_fewnodes=}\NormalTok{rf_fewnodes) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{map_dfr}\NormalTok{(}\ControlFlowTok{function}\NormalTok{(model) \{}
-\NormalTok{    forecast_data }\OperatorTok{%>%}
-\StringTok{      }\KeywordTok{filter}\NormalTok{(}\OperatorTok{!}\NormalTok{is_training) }\OperatorTok{%>%}
-\StringTok{      }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{constant, }\OperatorTok{-}\NormalTok{Date, }\OperatorTok{-}\NormalTok{Asset, }\OperatorTok{-}\NormalTok{is_training) }\OperatorTok{%>%}
-\StringTok{      }\NormalTok{\{}\KeywordTok{predict}\NormalTok{(model, }\DataTypeTok{newdata =}\NormalTok{ .)\} }\OperatorTok{%>%}\StringTok{ }
-\StringTok{      }\KeywordTok{bind_cols}\NormalTok{(}\DataTypeTok{hat=}\NormalTok{.,}
-\NormalTok{                forecast_data }\OperatorTok{%>%}\StringTok{ }
-\StringTok{                  }\KeywordTok{filter}\NormalTok{(}\OperatorTok{!}\NormalTok{is_training) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{                  }\KeywordTok{select}\NormalTok{(endo)) }\OperatorTok{%>%}
-\StringTok{      }\KeywordTok{summarize}\NormalTok{(}\DataTypeTok{MSE=}\DecValTok{10000}\OperatorTok{*}\KeywordTok{mean}\NormalTok{((endo}\OperatorTok{-}\NormalTok{hat)}\OperatorTok{^}\DecValTok{2}\NormalTok{)) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{      }\KeywordTok{select}\NormalTok{(MSE) }
-\NormalTok{  \}, }\DataTypeTok{.id=}\StringTok{"Model"}\NormalTok{) ->}
-\StringTok{  }\NormalTok{MSE}
-\NormalTok{  MSE }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{arrange}\NormalTok{(}\KeywordTok{desc}\NormalTok{(MSE)) }\OperatorTok{%>%}
-\StringTok{  }\NormalTok{knitr}\OperatorTok{::}\KeywordTok{kable}\NormalTok{(}\DataTypeTok{digits=}\DecValTok{3}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{longtable}[]{@{}lr@{}}
-\toprule
-Model & MSE\tabularnewline
-\midrule
-\endhead
-svm\_simple & 11.369\tabularnewline
-svm\_poly & 2.485\tabularnewline
-svm\_base & 2.171\tabularnewline
-rndForest & 2.110\tabularnewline
-svm\_gamma & 1.987\tabularnewline
-rf\_fewnodes & 1.958\tabularnewline
-\bottomrule
-\end{longtable}
 
 Fewer nodes made for a more robust model, but it is only marginally
 better than the noise-tolerant SVM.
@@ -884,36 +597,6 @@ all. Outcomes will be modeled as arising from a multivariate normal
 process to mimic the manner in which different countries' currencies
 affect one another.
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\CommentTok{# Generate the proximity matrix once for each currency, then average}
-\NormalTok{proximate <-}\StringTok{ }\ControlFlowTok{function}\NormalTok{(X) \{}
-\NormalTok{    prox_mat <-}\StringTok{ }\KeywordTok{randomForest}\NormalTok{(endo}\OperatorTok{~}\NormalTok{carry}\OperatorTok{+}\NormalTok{d_carry}\OperatorTok{+}\NormalTok{eqy_z}\OperatorTok{+}\NormalTok{spot_z}\OperatorTok{+}\NormalTok{yc_z, }\DataTypeTok{data=}\NormalTok{X, }\DataTypeTok{proximity=}\OtherTok{TRUE}\NormalTok{)}\OperatorTok{$}\NormalTok{proximity}
-    \KeywordTok{data.frame}\NormalTok{(}\DataTypeTok{Asset=}\NormalTok{X}\OperatorTok{$}\NormalTok{Asset, }\DataTypeTok{Date=}\NormalTok{X}\OperatorTok{$}\NormalTok{Date, prox_mat, }\DataTypeTok{stringsAsFactors =}\NormalTok{ F) }\OperatorTok{%>%}
-\StringTok{      }\KeywordTok{gather}\NormalTok{(x_Date,value,}\OperatorTok{-}\NormalTok{Asset,}\OperatorTok{-}\NormalTok{Date) }\OperatorTok{%>%}
-\StringTok{      }\KeywordTok{mutate}\NormalTok{(}\DataTypeTok{x_Date=}\NormalTok{X}\OperatorTok{$}\NormalTok{Date[}\KeywordTok{as.integer}\NormalTok{(}\KeywordTok{gsub}\NormalTok{(}\StringTok{"X"}\NormalTok{,}\StringTok{""}\NormalTok{,x_Date))]) }\CommentTok{#make sure the matrix stays lined up properly}
-\NormalTok{\}}
-
-\NormalTok{forecast_data }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{constant, }\OperatorTok{-}\NormalTok{is_training) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{group_by}\NormalTok{(Asset) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{do}\NormalTok{(}\KeywordTok{proximate}\NormalTok{(.)) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{group_by}\NormalTok{(Date, x_Date) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{summarize}\NormalTok{(}\DataTypeTok{value=}\KeywordTok{mean}\NormalTok{(value)) ->}
-\StringTok{  }\NormalTok{proximity}
-
-\NormalTok{proximity }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{mutate}\NormalTok{(}\DataTypeTok{value=}\KeywordTok{ifelse}\NormalTok{(x_Date}\OperatorTok{>=}\NormalTok{Date,}\DecValTok{0}\NormalTok{,value)) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{ggplot}\NormalTok{(}\KeywordTok{aes}\NormalTok{(}\DataTypeTok{x=}\NormalTok{x_Date,}\DataTypeTok{y=}\NormalTok{Date,}\DataTypeTok{fill=}\NormalTok{value)) }\OperatorTok{+}
-\StringTok{  }\KeywordTok{geom_tile}\NormalTok{() }\OperatorTok{+}\StringTok{ }\CommentTok{#I find myself using geom_tile a lot on this project}
-\StringTok{  }\KeywordTok{scale_fill_gradient}\NormalTok{(}\DataTypeTok{low=}\StringTok{"white"}\NormalTok{, }\DataTypeTok{high=}\StringTok{"red"}\NormalTok{) }\OperatorTok{+}
-\StringTok{  }\KeywordTok{coord_flip}\NormalTok{()}\OperatorTok{+}
-\StringTok{  }\KeywordTok{ggtitle}\NormalTok{(}\StringTok{"Similarity between Dates"}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\includegraphics{Econometric_FX_Forecasting_files/figure-latex/proxmat-1.pdf}
-
 Weightings will probably need to be normalized.
 
 \subsubsection{Panel estimation of weighted
@@ -928,83 +611,15 @@ validation workflow can be found can be found
 for the Gaussian Process regression mentioned earlier.
 
 The model will be fit using Stan, the current state of the art for
-Bayesian generative models. Stan fits using Hamiltonian Monte Carlo, and
-compiles directly to C for efficiency's sake, so the code in R will be
-specified as a long string.
+Bayesian generative models. Stan compiles directly to C for efficiency's
+sake, so the code in R will be specified as a long string. Best practice
+with Stan is to fit using Hamiltonian Monte Carlo, but due to time
+constraints this project may settle for maximum likelihood optimization.
 
 As a final input, the estimated covariance of the various currency
 returns will be specified directly, for parsimony's sake. A production
 system would typically estimate the joint volatility using a GARCH
 model.
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\KeywordTok{suppressPackageStartupMessages}\NormalTok{(}\KeywordTok{library}\NormalTok{(rstan))}
-\KeywordTok{rstan_options}\NormalTok{(}\DataTypeTok{auto_write =} \OtherTok{TRUE}\NormalTok{)}
-\KeywordTok{options}\NormalTok{(}\DataTypeTok{mc.cores =}\NormalTok{ parallel}\OperatorTok{::}\KeywordTok{detectCores}\NormalTok{()) }\CommentTok{# MCMC techniques involve running multiple chains and ensuring they mixed well, an easily paralellized problem.}
-
-\NormalTok{weighted_mvn_code <-}\StringTok{ "}
-\StringTok{data \{}
-\StringTok{  int<lower=0> A; // # of Assets}
-\StringTok{  int<lower=0> T; // # of weeks (recall that the linear regression weighting permits testing on t+1 forecasts in a single step)}
-\StringTok{  int<lower=0> J; // # of exogenous variables}
-\StringTok{  int<lower=0> T_1; // #start of training period. We need some padding so the regression has enough periods to be useful }
-\StringTok{  }
-\StringTok{  row_vector[A] Y[T]; // asset returns}
-\StringTok{  matrix[J,A] X[T]; //exogenous panel data}
-\StringTok{  cov_matrix[A] y_cov[T]; // Covariance of asset returns}
-\StringTok{  matrix[T,T] proxmat; //proximity matrix for weighting log-likelihood}
-\StringTok{\}}
-\StringTok{transformed data \{}
-\StringTok{  int<lower=0> TL; //#training period length}
-\StringTok{  matrix[A,A] L_y_cov[T];}
-\StringTok{  TL = T - T_1;}
-\StringTok{  for(t in 1:T) \{}
-\StringTok{    L_y_cov[t] = cholesky_decompose(y_cov[t]); // Cholesky decompositions are more stably positive-definite than straight covariance matrices}
-\StringTok{  \}}
-\StringTok{\}}
-\StringTok{parameters \{}
-\StringTok{  matrix[TL, J] beta; // Shrunk betas across all assets. Could have been estimated as a state space model}
-\StringTok{\}}
-\StringTok{model \{}
-\StringTok{  to_vector(beta) ~ normal(0, 1);}
-\StringTok{  for(t in T_1:(T-1)) \{ //for each week in the data}
-\StringTok{      for(i in 1:t) \{ //for each period prior to that week}
-\StringTok{        target += proxmat[t,i] * multi_normal_cholesky_lpdf(Y[i]|beta[t-T_1+1]*X[i], L_y_cov[i]);}
-\StringTok{      \}}
-\StringTok{    \}}
-\StringTok{\}}
-\StringTok{generated quantities \{}
-\StringTok{  //Generate forecasts so that we will have plenty of data to feed the neural net.}
-\StringTok{  vector[A] y_hat[TL];}
-\StringTok{  vector[TL] log_lik;}
-\StringTok{  log_lik[1] = multi_normal_cholesky_lpdf(Y[T_1]|beta[T_1]*X[T_1], L_y_cov[T_1]);}
-\StringTok{  for(t in (T_1+1):(T-1)) \{}
-\StringTok{    log_lik[t-T_1+1] = multi_normal_cholesky_lpdf(Y[t]|beta[t-T_1+1]*X[t-T_1+1], L_y_cov[t-T_1+1]);}
-\StringTok{    y_hat[t-T_1+1] = multi_normal_cholesky_rng(to_vector(beta[t-T_1]*X[t-T_1+1]), L_y_cov[t-T_1+1]);}
-\StringTok{  \} }
-\StringTok{\}}
-\StringTok{"}
-
-\NormalTok{weighted_mvn_model <-}\StringTok{ }\KeywordTok{stan_model}\NormalTok{(}\DataTypeTok{model_name=}\StringTok{"weighted_mvn"}\NormalTok{, }\DataTypeTok{model_code=}\NormalTok{weighted_mvn_code)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## In file included from /home/cnaylor/R/x86_64-pc-linux-gnu-library/3.2/BH/include/boost/config.hpp:39:0,
-##                  from /home/cnaylor/R/x86_64-pc-linux-gnu-library/3.2/BH/include/boost/math/tools/config.hpp:13,
-##                  from /home/cnaylor/R/x86_64-pc-linux-gnu-library/3.2/StanHeaders/include/stan/math/rev/core/var.hpp:7,
-##                  from /home/cnaylor/R/x86_64-pc-linux-gnu-library/3.2/StanHeaders/include/stan/math/rev/core/gevv_vvv_vari.hpp:5,
-##                  from /home/cnaylor/R/x86_64-pc-linux-gnu-library/3.2/StanHeaders/include/stan/math/rev/core.hpp:12,
-##                  from /home/cnaylor/R/x86_64-pc-linux-gnu-library/3.2/StanHeaders/include/stan/math/rev/mat.hpp:4,
-##                  from /home/cnaylor/R/x86_64-pc-linux-gnu-library/3.2/StanHeaders/include/stan/math.hpp:4,
-##                  from /home/cnaylor/R/x86_64-pc-linux-gnu-library/3.2/StanHeaders/include/src/stan/model/model_header.hpp:4,
-##                  from file1684ded9018.cpp:8:
-## /home/cnaylor/R/x86_64-pc-linux-gnu-library/3.2/BH/include/boost/config/compiler/gcc.hpp:186:0: warning: "BOOST_NO_CXX11_RVALUE_REFERENCES" redefined
-##  #  define BOOST_NO_CXX11_RVALUE_REFERENCES
-##  ^
-## <command-line>:0:0: note: this is the location of the previous definition
-\end{verbatim}
 
 Prepare the data in the format Stan expects. This was defined in the
 \texttt{data} section above.
@@ -1015,80 +630,13 @@ Create exponentially weighted variance-covariance matrix. GARCH would be
 better, but from prior experience makes little difference to weekly
 currency returns.
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{FIRST_DATA_SET <-}\StringTok{ }\DecValTok{52} \CommentTok{#Start the forecast after we have at least 52 weeks of data}
-\NormalTok{N1 <-}\StringTok{ }\KeywordTok{nrow}\NormalTok{(endo) }\OperatorTok{-}\StringTok{ }\DecValTok{1} \OperatorTok{-}\StringTok{ }\NormalTok{FIRST_DATA_SET}
-\NormalTok{N2 <-}\StringTok{ }\DecValTok{0} \CommentTok{# # of extra periods}
-\NormalTok{A <-}\StringTok{ }\KeywordTok{ncol}\NormalTok{(endo)}\OperatorTok{-}\DecValTok{1}
-
-\NormalTok{y_cov <-}\StringTok{ }\KeywordTok{array}\NormalTok{(}\OtherTok{NA}\NormalTok{, }\DataTypeTok{dim=}\KeywordTok{c}\NormalTok{(N1}\OperatorTok{+}\NormalTok{N2, A, A))}
-
-\NormalTok{lambda <-}\StringTok{ }\KeywordTok{exp}\NormalTok{(}\KeywordTok{log}\NormalTok{(}\FloatTok{0.5}\NormalTok{)}\OperatorTok{/}\DecValTok{52}\NormalTok{) }\CommentTok{# 1Y half-life exponential decay}
-\NormalTok{wts <-}\StringTok{ }\NormalTok{lambda }\OperatorTok{^}\StringTok{ }\NormalTok{(}\KeywordTok{seq.int}\NormalTok{(}\DecValTok{0}\NormalTok{, y_offset}\OperatorTok{+}\NormalTok{N1}\OperatorTok{+}\NormalTok{N2))}
-\ControlFlowTok{for}\NormalTok{(n }\ControlFlowTok{in} \DecValTok{1}\OperatorTok{:}\KeywordTok{nrow}\NormalTok{(y_cov)) \{}
-\NormalTok{  ind <-}\StringTok{ }\KeywordTok{seq.int}\NormalTok{(FIRST_DATA_SET}\OperatorTok{+}\NormalTok{n}\OperatorTok{-}\DecValTok{1}\NormalTok{) }\CommentTok{#extra -1 in the index because we are lagging these an extra step}
-\NormalTok{  y_cov[n,,] <-}\StringTok{ }\KeywordTok{cov.wt}\NormalTok{(endo[ind,}\OperatorTok{-}\DecValTok{1}\NormalTok{],}\KeywordTok{rev}\NormalTok{(wts[ind]), }\DataTypeTok{center=}\NormalTok{F)}\OperatorTok{$}\NormalTok{cov  }
-\NormalTok{\}}
-\end{Highlighting}
-\end{Shaded}
-
 Prepare the rest of the data
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{stan_data <-}\StringTok{ }\KeywordTok{list}\NormalTok{(}\DataTypeTok{A=}\KeywordTok{length}\NormalTok{(}\KeywordTok{unique}\NormalTok{(forecast_data}\OperatorTok{$}\NormalTok{Asset)),}
-                  \DataTypeTok{T=}\KeywordTok{length}\NormalTok{(}\KeywordTok{unique}\NormalTok{(forecast_data}\OperatorTok{$}\NormalTok{Date)),}
-                  \DataTypeTok{J=}\DecValTok{6}\NormalTok{,}\DataTypeTok{T_1=}\DecValTok{52}\NormalTok{,}
-                  \DataTypeTok{Y=}\NormalTok{forecast_data }\OperatorTok{%>%}\StringTok{ }
-\StringTok{                    }\KeywordTok{select}\NormalTok{(Date, Asset, endo) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{                    }\KeywordTok{spread}\NormalTok{(Asset, endo) }\OperatorTok{%>%}
-\StringTok{                    }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{Date),}
-                  \DataTypeTok{X=}\NormalTok{forecast_data }\OperatorTok{%>%}\StringTok{ }
-\StringTok{                    }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{endo, }\OperatorTok{-}\NormalTok{is_training, }\OperatorTok{-}\NormalTok{Date) }\OperatorTok{%>%}
-\StringTok{                    }\KeywordTok{nest}\NormalTok{(}\OperatorTok{-}\NormalTok{Asset) }\OperatorTok{%>%}
-\StringTok{                    }\NormalTok{\{}\KeywordTok{abind}\NormalTok{(.}\OperatorTok{$}\NormalTok{data, }\DataTypeTok{along=}\DecValTok{3}\NormalTok{, }\DataTypeTok{new.names=}\NormalTok{.}\OperatorTok{$}\NormalTok{Asset)\},}
-                  \DataTypeTok{y_cov=}\NormalTok{y_cov[}\DecValTok{3}\OperatorTok{:}\DecValTok{504}\NormalTok{,,],}
-                  \DataTypeTok{proxmat=}\NormalTok{proximity }\OperatorTok{%>%}\StringTok{ }
-\StringTok{                    }\KeywordTok{ungroup}\NormalTok{() }\OperatorTok{%>%}
-\StringTok{                    }\KeywordTok{spread}\NormalTok{(x_Date, value) }\OperatorTok{%>%}
-\StringTok{                    }\KeywordTok{select}\NormalTok{(}\OperatorTok{-}\NormalTok{Date) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{                    }\KeywordTok{as.matrix}\NormalTok{())}
-\end{Highlighting}
-\end{Shaded}
 
 Run direct maximum likelihood optimization instead of Hamiltonian Monte
 Carlo due to time constraints.
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{fit_weighted_mvn <-}\StringTok{ }\KeywordTok{optimizing}\NormalTok{(weighted_mvn_model, }\DataTypeTok{data=}\NormalTok{stan_data)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## Initial log joint probability = -4.215e+08
-## Optimization terminated normally: 
-##   Convergence detected: relative gradient magnitude is below tolerance
-\end{verbatim}
-
 Extract parameters
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\KeywordTok{matrix}\NormalTok{(fit_weighted_mvn}\OperatorTok{$}\NormalTok{par[}\KeywordTok{grep}\NormalTok{(}\StringTok{"beta"}\NormalTok{, }\KeywordTok{names}\NormalTok{(fit_weighted_mvn}\OperatorTok{$}\NormalTok{par))],}
-       \KeywordTok{with}\NormalTok{(stan_data,T}\OperatorTok{-}\NormalTok{T_}\DecValTok{1}\NormalTok{), stan_data}\OperatorTok{$}\NormalTok{J, }\DataTypeTok{byrow=}\NormalTok{T, }\DataTypeTok{dimnames=}\KeywordTok{list}\NormalTok{(}\OtherTok{NULL}\NormalTok{, }\KeywordTok{unique}\NormalTok{(exogs}\OperatorTok{$}\NormalTok{Exog))) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{as.data.frame}\NormalTok{() }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{mutate}\NormalTok{(}\DataTypeTok{Date=}\NormalTok{endo}\OperatorTok{$}\NormalTok{Date[stan_data}\OperatorTok{$}\NormalTok{T_}\DecValTok{1}\OperatorTok{:}\NormalTok{(stan_data}\OperatorTok{$}\NormalTok{T}\OperatorTok{-}\DecValTok{1}\NormalTok{)]) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{gather}\NormalTok{(Exog,value,}\OperatorTok{-}\NormalTok{Date) ->}
-\StringTok{  }\NormalTok{beta}
-
-\NormalTok{beta }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{ggplot}\NormalTok{(}\KeywordTok{aes}\NormalTok{(}\DataTypeTok{x=}\NormalTok{Date, }\DataTypeTok{y=}\NormalTok{value, }\DataTypeTok{col=}\NormalTok{Exog)) }\OperatorTok{+}\StringTok{ }\KeywordTok{geom_line}\NormalTok{(}\DataTypeTok{alpha=}\FloatTok{0.6}\NormalTok{) }\OperatorTok{+}\StringTok{ }\KeywordTok{ggtitle}\NormalTok{(}\StringTok{"Betas over Time"}\NormalTok{) }\OperatorTok{+}\StringTok{ }\KeywordTok{scale_color_manual}\NormalTok{(}\DataTypeTok{values=}\NormalTok{exog_colors)}
-\end{Highlighting}
-\end{Shaded}
-
-\includegraphics{Econometric_FX_Forecasting_files/figure-latex/unnamed-chunk-4-1.pdf}
 The betas could be artificially induced to be more stable, as in a State
 Space Model. The fact that they are not naturally so, and have such
 small values, indicates that most of the variation in asset returns
@@ -1096,46 +644,50 @@ cannot be explained by the weighted model.
 
 How well did the model predict returns?
 
-\begin{Shaded}
-\begin{Highlighting}[]
-\KeywordTok{matrix}\NormalTok{(fit_weighted_mvn}\OperatorTok{$}\NormalTok{par[}\KeywordTok{grep}\NormalTok{(}\StringTok{"y_hat"}\NormalTok{, }\KeywordTok{names}\NormalTok{(fit_weighted_mvn}\OperatorTok{$}\NormalTok{par))],}
-       \KeywordTok{with}\NormalTok{(stan_data,T}\OperatorTok{-}\NormalTok{T_}\DecValTok{1}\NormalTok{), stan_data}\OperatorTok{$}\NormalTok{A, }\DataTypeTok{byrow=}\NormalTok{T, }\DataTypeTok{dimnames=}\KeywordTok{list}\NormalTok{(}\OtherTok{NULL}\NormalTok{, }\KeywordTok{colnames}\NormalTok{(endo)[}\OperatorTok{-}\DecValTok{1}\NormalTok{])) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{as.data.frame}\NormalTok{() }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{mutate}\NormalTok{(}\DataTypeTok{Date=}\NormalTok{endo}\OperatorTok{$}\NormalTok{Date[stan_data}\OperatorTok{$}\NormalTok{T_}\DecValTok{1}\OperatorTok{:}\NormalTok{(stan_data}\OperatorTok{$}\NormalTok{T}\OperatorTok{-}\DecValTok{1}\NormalTok{)]) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{gather}\NormalTok{(Asset,y_hat,}\OperatorTok{-}\NormalTok{Date) ->}
-\StringTok{  }\NormalTok{y_hat}
-
-\NormalTok{y_hat }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{drop_na}\NormalTok{() }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{inner_join}\NormalTok{(endo }\OperatorTok{%>%}\StringTok{ }\KeywordTok{gather}\NormalTok{(Asset, value, }\OperatorTok{-}\NormalTok{Date), }\DataTypeTok{by=}\KeywordTok{c}\NormalTok{(}\StringTok{"Asset"}\NormalTok{,}\StringTok{"Date"}\NormalTok{)) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{summarize}\NormalTok{(}\DataTypeTok{Model=}\StringTok{"analogy_mvn"}\NormalTok{, }\DataTypeTok{MSE=}\DecValTok{10000}\OperatorTok{*}\KeywordTok{mean}\NormalTok{((value}\OperatorTok{-}\NormalTok{y_hat)}\OperatorTok{^}\DecValTok{2}\NormalTok{)) }\OperatorTok{%>%}\StringTok{ }
-\StringTok{  }\KeywordTok{bind_rows}\NormalTok{(MSE) }\OperatorTok{%>%}
-\StringTok{  }\KeywordTok{arrange}\NormalTok{(}\KeywordTok{desc}\NormalTok{(MSE)) ->}
-\StringTok{  }\NormalTok{MSE}
-\NormalTok{MSE }\OperatorTok{%>%}\StringTok{ }\NormalTok{knitr}\OperatorTok{::}\KeywordTok{kable}\NormalTok{(}\DataTypeTok{digits=}\DecValTok{3}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{longtable}[]{@{}lr@{}}
-\toprule
-Model & MSE\tabularnewline
-\midrule
-\endhead
-svm\_simple & 11.369\tabularnewline
-analogy\_mvn & 6.570\tabularnewline
-svm\_poly & 2.485\tabularnewline
-svm\_base & 2.171\tabularnewline
-rndForest & 2.110\tabularnewline
-svm\_gamma & 1.987\tabularnewline
-rf\_fewnodes & 1.958\tabularnewline
-On its own, th & e analogy-weighted model is one of the poorest
-options.\tabularnewline
-\bottomrule
-\end{longtable}
+On its own, the analogy-weighted model is one of the poorest options.
 
 \subsection{Taming the Chaos}\label{taming-the-chaos}
 
-\section{References}\label{references}
+The introduction mentioned the chaotic nature of currency returns.
+Recently, a team at the University of Maryland have had some success in
+forecasting chaotic time series several steps ahead (Pathak et al.
+2018). They took a deterministic chaotic system known as the
+Kuramoto-Sivashinksy equation, and fed measurements into a set of 64
+Echo State Network layers, with each layer handling a smaller section of
+the overall data. An Echo State Network layer consists of a relatively
+large number of nodes with sparse, random connections (essentially an
+Erdos-Renyi network rather than the scale-free network believed to be
+the actual characterization of currency returns) (Lukoševičius 2012).
+The input for this implementation will consist of the residuals from the
+Analogy-weighted regression computed before.
+
+\section*{References}\label{references}
+\addcontentsline{toc}{section}{References}
+
+\hypertarget{refs}{}
+\hypertarget{ref-barabasi2002linked}{}
+Barabasi, Albert-Laszlo. 2002. ``Linked the New Science of Networks.''
+Cambridge, Mass.: Perseus Pub.
+\url{http://www.amazon.com/Linked-The-New-Science-Networks/dp/0738206679}.
+
+\hypertarget{ref-Luko2012}{}
+Lukoševičius, Mantas. 2012. ``A Practical Guide to Applying Echo State
+Networks.'' In \emph{Neural Networks: Tricks of the Trade: Second
+Edition}, edited by Grégoire Montavon, Geneviève B. Orr, and
+Klaus-Robert Müller, 659--86. Berlin, Heidelberg: Springer Berlin
+Heidelberg.
+doi:\href{https://doi.org/10.1007/978-3-642-35289-8_36}{10.1007/978-3-642-35289-8\_36}.
+
+\hypertarget{ref-naylor_GP}{}
+Naylor, Charles. 2017. ``Gaussian Process Regression for Fx Forecasting:
+A Case Study.'' \url{https://charlesnaylor.github.io/gp_regression/}.
+
+\hypertarget{ref-PhysRevLett.120.024102}{}
+Pathak, Jaideep, Brian Hunt, Michelle Girvan, Zhixin Lu, and Edward Ott.
+2018. ``Model-Free Prediction of Large Spatiotemporally Chaotic Systems
+from Data: A Reservoir Computing Approach.'' \emph{Phys. Rev. Lett.} 120
+(2). American Physical Society: 024102.
+doi:\href{https://doi.org/10.1103/PhysRevLett.120.024102}{10.1103/PhysRevLett.120.024102}.
 
 
 \end{document}

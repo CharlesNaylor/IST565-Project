@@ -1,0 +1,14 @@
+\BOOKMARK [1][-]{section*.2}{Introduction}{}% 1
+\BOOKMARK [2][-]{section*.3}{Summary\040of\040Currency\040Markets}{section*.2}% 2
+\BOOKMARK [2][-]{section*.6}{Motivation}{section*.2}% 3
+\BOOKMARK [2][-]{section*.7}{Goals}{section*.2}% 4
+\BOOKMARK [1][-]{section*.8}{The\040Data}{}% 5
+\BOOKMARK [2][-]{section*.9}{Initial\040Data\040Gathering}{section*.8}% 6
+\BOOKMARK [2][-]{section*.13}{Factors}{section*.8}% 7
+\BOOKMARK [1][-]{section*.16}{Models}{}% 8
+\BOOKMARK [2][-]{section*.17}{Classification}{section*.16}% 9
+\BOOKMARK [1][-]{section*.26}{Forecasting}{}% 10
+\BOOKMARK [2][-]{section*.29}{Random\040Forests}{section*.26}% 11
+\BOOKMARK [2][-]{section*.30}{Analogy\040Weighting}{section*.26}% 12
+\BOOKMARK [2][-]{section*.33}{Taming\040the\040Chaos}{section*.26}% 13
+\BOOKMARK [1][-]{section*.34}{References}{}% 14

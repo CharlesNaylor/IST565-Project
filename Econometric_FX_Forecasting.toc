@@ -1,0 +1,33 @@
+\contentsline {section}{Introduction}{1}{section*.2}
+\contentsline {subsection}{Summary of Currency Markets}{1}{section*.3}
+\contentsline {subsubsection}{The Carry Trade}{1}{section*.4}
+\contentsline {subsubsection}{Drivers of Returns}{2}{section*.5}
+\contentsline {subsection}{Motivation}{2}{section*.6}
+\contentsline {subsection}{Goals}{2}{section*.7}
+\contentsline {section}{The Data}{2}{section*.8}
+\contentsline {subsection}{Initial Data Gathering}{3}{section*.9}
+\contentsline {subsubsection}{Swap Rates}{3}{section*.10}
+\contentsline {subsubsection}{Spot Rates}{3}{section*.11}
+\contentsline {subsubsection}{Equity Indexes}{3}{section*.12}
+\contentsline {subsection}{Factors}{4}{section*.13}
+\contentsline {subsubsection}{Y variables}{4}{section*.14}
+\contentsline {subsubsection}{X variables}{4}{section*.15}
+\contentsline {section}{Models}{4}{section*.16}
+\contentsline {subsection}{Classification}{4}{section*.17}
+\contentsline {subsubsection}{Introduction: Regime Switching Models}{4}{section*.18}
+\contentsline {subsubsection}{Dissimilarity Matrixes}{5}{section*.19}
+\contentsline {paragraph}{Global Regimes}{5}{section*.20}
+\contentsline {paragraph}{Principal Component Analysis}{5}{section*.21}
+\contentsline {paragraph}{Per-Country Regimes}{5}{section*.22}
+\contentsline {subsubsection}{Hierarchical Clustering}{5}{section*.23}
+\contentsline {paragraph}{Per-country}{5}{section*.24}
+\contentsline {subsubsection}{K-means Clustering}{6}{section*.25}
+\contentsline {section}{Forecasting}{6}{section*.26}
+\contentsline {subsubsection}{Support Vector Machines}{6}{section*.27}
+\contentsline {paragraph}{Tuning the SVM}{6}{section*.28}
+\contentsline {subsection}{Random Forests}{7}{section*.29}
+\contentsline {subsection}{Analogy Weighting}{7}{section*.30}
+\contentsline {subsubsection}{Panel estimation of weighted regressions}{8}{section*.31}
+\contentsline {paragraph}{\(\Sigma _y\)}{8}{section*.32}
+\contentsline {subsection}{Taming the Chaos}{8}{section*.33}
+\contentsline {section}{References}{8}{section*.34}
