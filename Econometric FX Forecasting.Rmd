@@ -43,11 +43,6 @@ Work is being done at the University of Maryland into the application of neural 
 
 # The Data
 ```{r setup}
-knitr::opts_chunk$set(
-	message = FALSE,
-	warning = FALSE,
-	include = FALSE
-)
 packages <- c("tidyverse", "scales", "lubridate", "ggthemes", "randomForest", "cluster", "e1071", "abind")
 lapply(packages, function(X){suppressPackageStartupMessages(library(X, character.only=T))})
 ```
@@ -65,7 +60,7 @@ As mentioned before, returns on FX consist of two elements: changes in the spot 
 Swap rates are the interest rates offered on short-term debt instruments known as Swaps, and are often used as a proxy for the interest rate differential. The ideal source would be the implied 1M forward rate, which is literally what investors will receive. There were a few options to check.
 
 Read in raw data from Bloomberg.
-```{r swaps_raw}
+```{r swaps_raw, echo=TRUE, message=FALSE, warning=FALSE}
 library(readxl)
 rate_pages <- c("10Y Swaps", "2Y Swaps", "Forward Points", "1M Swaps", "Implied 1M Fwd")
 RATE_PATH <- "data/proprietary/rates.xlsx"
@@ -84,7 +79,7 @@ Australia and Norway can be backfilled with the 1M swap data. More worrisome is 
 
 ### Spot Rates
 
-Spot rates, at least should be freely available. However, once again, data from Yahoo turned out to be poor enough that proprietary Bloomberg data was needed. Supposedly weekly data from Yahoo included some data marked from all days of the week, although not all with the same frequency.
+Spot rates, at least should be freely available. However, once again, data from Yahoo turned out to be poor enough that proprietary Bloomberg data was needed. Supposedly weekly data from Yahoo included some data marked from all days of the week, although not all with the same frequency. Time zone differences did not explain these errors, and so the data couldn't be trusted. There is a global standard benchmark based on prices at the close of the London exchanges, which Bloomberg provides.
 
 ### Equity Indexes
 
@@ -95,21 +90,25 @@ stopifnot(require(xts))
 EQUITIES <- c(AUD="^AXJO", CAD="^GSPTSE", CHF="SLIC.SW", CZK="FPXAA.PR", EUR="^STOXX50E",
               GBP="^FTSE", JPY="^N225", NOK="OBX.OL", NZD="^NZ50", SEK="^OMX",
               TRY="XU100.IS", USD="^GSPC")
-env_eqy <- new.env() #quantmod likes to drop new variables directly into the root environmen
-suppressMessages(suppressWarnings(
-  eqy_ticks <- quantmod::getSymbols(Symbols=EQUITIES, src="yahoo", 
-                             from=as.Date("2007-01-01"), env=env_eqy)
-))
-
-process_eqy <- function(ticker) { 
-  tick <- gsub("^\\^","",ticker)
-  x <- get(tick, envir=env_eqy) #quantmod doesn't keep initial '^'s when assigning names
-  colnames(x) <- gsub(paste0(tick,"\\."),"",colnames(x))
-  return(data.frame(Date=index(x),coredata(x)))
-}
-
-equities <- map_dfr(eqy_ticks, process_eqy, .id="asset") %>%
-          mutate(asset=factor(names(EQUITIES)[as.numeric(asset)]))
+env_eqy <- new.env() #quantmod likes to drop new variables directly into the root environment
+LOADED_FROM_FILE=F
+tryCatch({
+  suppressMessages(suppressWarnings(
+    eqy_ticks <- quantmod::getSymbols(Symbols=EQUITIES, src="yahoo", 
+                               from=as.Date("2007-01-01"), env=env_eqy)))
+  
+  process_eqy <- function(ticker) { 
+    tick <- gsub("^\\^","",ticker)
+    x <- get(tick, envir=env_eqy) #quantmod doesn't keep initial '^'s when assigning names
+    colnames(x) <- gsub(paste0(tick,"\\."),"",colnames(x))
+    return(data.frame(Date=index(x),coredata(x)))
+  }
+  
+  map_dfr(eqy_ticks, process_eqy, .id="asset") %>%
+            mutate(asset=factor(names(EQUITIES)[as.numeric(asset)]))
+  },
+  error=function(e) {LOADED_FROM_FILE=T;return(read_csv("data/equities.csv"))}
+) -> equities
 equities %>% ggplot(aes(x=Date, y=Close)) + facet_wrap(~asset, ncol=3, scale="free_y") +
   geom_line() + ggtitle("Equity Indexes")
 ```
@@ -119,8 +118,10 @@ Data was patchy for CHF, NZD, and TRY, and non-existant for CZK and NOK. CZK and
 Finally, there were some timing issues with antipodal stock exchanges. Yahoo provided all data in the US Eastern time zone, so that AUD and NZD exchanges open on Sunday night instead of Monday morning. Since the plan is to use weekly signals, this data needed to be put back in local timezones.
 
 ```{r fix_antipodes}
+if(!LOADED_FROM_FILE) {
 equities <- equities %>% mutate(Date=ifelse(asset %in% c("AUD","NZD"),  Date + days(1),Date),
                                 Date=as.Date(Date, origin=ymd(19700101)))
+}
 ```
 
 ## Factors
@@ -170,6 +171,17 @@ endo %>%
     geom_hline(aes(yintercept=0), col="darkgrey") + 
     geom_line() +
     ggtitle("Cumulative Returns vs. USD") + ylab("") + xlab("")
+```
+
+The distribution of weekly asset returns shows high kurtosis, known as "fat tails" in the industry.
+
+```{r y_dist}
+endo %>%
+  gather(Asset,value,-Date) %>%
+  drop_na() %>%
+  ggplot(aes(x=value, col=Asset)) + 
+  geom_density(bw=0.01) +
+  ggtitle("Distribution of Weekly FX returns")
 ```
 
 ### X variables
@@ -266,6 +278,7 @@ all_obs_matrix %>%
   geom_point(alpha=0.25) + 
   ggtitle("First 2 Principal Components")
 ```
+
 There is not much evidence of clear regime clusters here.
 
 #### Per-Country Regimes
@@ -339,6 +352,7 @@ asset_dissimilarity %>%
           axis.ticks.y = element_blank()) + ylab("Row Per Asset") +
     ggtitle("Hierarchical Clustering Per-Asset Regimes")
 ```
+
 There is still quite a lot of commonality between regimes. The least similar currency is the Turkish Lira, on the bottom row. The British Pound (middle row) enters a new regime 3 weeks *before* the vote on exiting the EU, in week 25 of 2016, which is evidence against the validity of this technique.
 
 ### K-means Clustering
@@ -712,25 +726,37 @@ On its own, the analogy-weighted model is one of the poorest options.
 ## Taming the Chaos
 
 The introduction mentioned the chaotic nature of currency returns. Recently, a team at the University of Maryland have had some success in forecasting chaotic time series several steps ahead [@PhysRevLett.120.024102]. They took a deterministic chaotic system known as the Kuramoto-Sivashinksy equation, and fed measurements into a set of 64 Echo State Network layers, with each layer handling a smaller section of the overall data. An Echo State Network layer consists of a relatively large number of nodes with sparse, random connections (essentially an Erdos-Renyi network rather than the scale-free network believed to be the actual characterization of currency returns) [@Luko2012]. The input for this implementation will consist of the residuals from the Analogy-weighted regression computed before.
-```{r tf_helper_functions}
-library(tensorflow)
 
-esn_model_fn <- function(features, labels, mode, params, config) {
-  #construct a few ESN layers, handle parameter tuning.
-  # We have scaled inputs already, so we just need to worry about
-  # spectral radius and leaking rates.
-  # the spectral radius must be < 1 for the RNN layer to be considered an ESN.
-  
-  #input layer: we have 2D data consisting of the residuals for each asset each week. We might batch the data if we choose to use HMC-generated forecasts.
-  input_layer = tf$reshape(features$x, c(-1L, 505L, 11L))
-  size = 100
-  variance = 0.1 / np.sqrt(size)
-  W = np.random.randn(size, size)*variance
-      
-  #
-}
+Unfortunately, Echo State Networks have fallen out of fashion in recent years after the success of LSTM networks. The author was unable to implement an Echo State Network cell manually in tensorflow or keras. Instead, a standard LSTM network will stand in on the last stage of forecasting. A few designs were tried but the best results came from two LSTM layers fit with a relatively high 50% Dropout layer interspersed between them. The high Dropout was an effort to mimic the sparsely linked nodes typical of Echo State Networks, The LSTM node values were converted back to relevant residuals using a set of linear weights. While the model should be fittable using R's interface to Python, issues in data structure translation led the code to be run directly in Python. It can be found in the accompanying file, `LSTM.ipynb`.
+
+Add the predicted residuals to the predicted Y values from the Analogy weighting, and a new, hybrid Bayesian/Deep Learning model arises. Albeit on a shorter time horizon, as the LSTM was given two years on which to train.
+
+Syracuse's SUrge GPU cluster helpfully provided the hardware needed to run the network.
+
+```{r load_lstm_resids}
+read_csv("data/lstm_resids.csv", 
+         col_types=cols(Date=col_date(), 
+                        .default=col_double())) %>%
+  gather(Asset, r_hat, -Date) %>%
+  inner_join(y_hat, by=c("Asset", "Date")) %>%
+  inner_join(endo %>% gather(Asset, y, -Date), by=c("Asset","Date")) %>% 
+  summarize(Model="analogy+lstm", MSE=10000*mean((y-(y_hat+r_hat))^2)) %>% 
+  bind_rows(MSE) %>%
+  arrange(desc(MSE)) ->
+  MSE
+MSE %>% knitr::kable(digits=3)
 ```
 
+Unfortunately, the LSTM network failed to predict the residuals with any accuracy. Perhaps a different configuration, a proper Echo State Network, or a great deal more data would make the difference.
 
+# Conclusions
+
+Of the data mining techniques tried, Random Forests and fault-tolerant Support Vector Machines showed the most promise, although both algorithms looked to have formed specifically fitted models, which may not perform as well for new data.
+
+The classifiers showed promise, producing contiguous and generally sensible blocks of similar behavior. There were a few specific events, however, that should have signaled shifts in regime and did not. Particularly, the hierarchical clustering algorithm showed a shift in the British Pound's behavior 3 weeks *before* the vote to leave the EU took place, when in fact sharp moves in the spot rate occurred that night in the Asian markets as the per-county results came in.
+
+Efforts to use the probabilistic classification techniques afforded by the proximity matrix generated by the random forest algorithm to weight a Least Squares regression were not successful, although more work could be done on the subject. An obvious addition would be to smooth out the feature betas using a state space model. 
+
+A great deal more work remains to be done on layering Deep Learning or Reservoir Computing techniques on top of traditional regressions, as suggested in [@PhysRevLett.120.024102]. Thus far, however, the hybrid model has not been a success. Perhaps better results could be had if the regression were also fit within the Tensorflow model. Another alternative might be to compensate for the lack of data by using the generative output from an MCMC regression instead of the point estimates of asset returns.
 
 # References
